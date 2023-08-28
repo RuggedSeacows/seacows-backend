@@ -1,0 +1,170 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  engineType    = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Description: EIP-*** type of smart-contract.
+enum CollectionType {
+  ERC721
+  ERC1155
+}
+
+// Description: EVM-compatible related network (chain ID, name, native currency, ...) to the data stored in the database.
+model Network {
+  id              Int    @id
+  name            String @db.VarChar
+  currencyAddress String @map("currency_address") @db.VarChar(42)
+
+  // Relationship
+  currency   Currency     @relation(fields: [currencyAddress], references: [address])
+  Collection Collection[]
+
+  @@unique([name])
+  @@map("network")
+}
+
+// Description: Currency supported by the application (including native currency) for a given network.
+model Currency {
+  id        Int       @id @default(autoincrement())
+  address   String    @db.Char(42) // length_check = 42
+  name      String    @db.Text
+  symbol    String    @db.Text
+  decimals  Int       @db.Integer
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+
+  // Relationship
+  network Network[]
+
+  @@unique([address])
+  @@map("currency")
+}
+
+model Wallet {
+  id      Int    @id @default(autoincrement())
+  address String @db.Char(42) // length_check = 42
+
+  // Relationship
+  collection Collection[]
+  tokenOwner TokenOwner[]
+
+  @@unique([address])
+  @@map("wallet")
+}
+
+// ERC-721 & ERC-1155
+
+// Description: NFT (a.k.a. Collection) data.
+model Collection {
+  id            Int            @id @default(autoincrement())
+  type          CollectionType
+  ownerWalletId Int            @map("owner_wallet_id") @db.Integer
+  isExplicit    Boolean?       @map("is_explicit")
+  isVerified    Boolean?       @map("is_verified")
+  address       String         @db.Char(42) // length_check = 42
+  name          String         @db.Text
+  description   String?        @db.Text
+  symbol        String?        @db.Text
+  logo          String?        @db.Text
+  banner        String?        @db.Text
+  websiteLink   String?        @map("website_link") @db.Text
+  twitterLink   String?        @map("twitter_link") @db.Text
+  osSlug        String?        @map("os_slug") @db.Text
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime?      @map("updated_at")
+  networkId     Int            @map("network_id")
+
+  // Relationship
+  owner   Wallet  @relation(fields: [ownerWalletId], references: [id])
+  network Network @relation(fields: [networkId], references: [id])
+
+  token          Token[]
+  tokenAttribute TokenAttribute[]
+  owners         TokenOwner[]
+
+  @@unique([networkId, address])
+  @@map("collection")
+}
+
+// Description: Token data for a given Collection smart-contract, including app-level fields.
+model Token {
+  id                 Int       @id @default(autoincrement()) @map("id")
+  collectionId       Int       @map("collection_id") @db.Integer
+  tokenId            Decimal   @map("tokenid") @db.Decimal(78, 0) // Note: Mapped to eq. 'Numeric(78,0)' - 2**256
+  flagId             Int       @map("flag_id")
+  isAnimated         Boolean?  @map("is_animated")
+  tokenUri           String?   @map("token_uri") @db.Text
+  name               String    @map("name") @db.Text
+  description        String?   @map("description") @db.Text
+  image              String?   @map("image") @db.Text
+  refreshRequestedAt DateTime? @map("refresh_requested_at")
+  refreshExecutedAt  DateTime? @map("refresh_executed_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime? @map("updated_at")
+  eventBlock         BigInt?   @map("event_block") @db.BigInt
+
+  // Relationship
+  collection      Collection       @relation(fields: [collectionId], references: [id])
+  owners          TokenOwner[]
+  tokenAttributes TokenAttribute[]
+
+  @@unique([collectionId, tokenId])
+  @@index([createdAt, id])
+  @@map("token")
+}
+
+// Description: Token Owners, to satisfy EIP-1155.
+model TokenOwner {
+  tokenId      Int     @map("token_id") @db.Integer
+  collectionId Int     @map("collection_id") @db.Integer
+  walletId     Int     @map("wallet_id") @db.Integer
+  balance      Decimal @db.Decimal(78, 0) // Note: Mapped to eq. 'Numeric(78,0)' - 2**2^56
+
+  // Relationship
+  collection Collection @relation(fields: [collectionId], references: [id])
+  token      Token      @relation(fields: [tokenId], references: [id])
+  wallet     Wallet     @relation(fields: [walletId], references: [id])
+
+  @@id([tokenId, walletId])
+  @@index([collectionId, walletId])
+  @@index([collectionId, tokenId, walletId])
+  @@map("token_owner")
+}
+
+// Description: Attributes (a.ka.a Traits) returned by a `tokenURI` function call.
+model Attribute {
+  id          Int       @id @default(autoincrement()) // Includes "trait_type", "value"
+  traitType   String    @map("trait_type") @db.Text
+  value       String    @db.Text
+  displayType String?   @map("display_type") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime? @map("updated_at")
+
+  // Relationship
+  token_attribute TokenAttribute[]
+
+  @@unique([traitType, value])
+  @@index([traitType])
+  @@map("attribute")
+}
+
+// Description: 1:n relationship between a Token and Attribute, for many-to-many and to avoid duplicated entries.
+model TokenAttribute {
+  collectionId Int @map("collection_id") @db.Integer
+  tokenId      Int @map("token_id") @db.Integer
+  attributeId  Int @map("attribute_id") @db.Integer
+
+  // Relationship
+  attribute  Attribute  @relation(fields: [attributeId], references: [id])
+  collection Collection @relation(fields: [collectionId], references: [id])
+  token      Token      @relation(fields: [tokenId], references: [id])
+
+  @@id([tokenId, attributeId])
+  @@map("token_attribute")
+}

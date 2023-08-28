@@ -1,0 +1,20 @@
+{
+  "entryFile": "src/app.ts",
+  "noImplicitAdditionalProperties": "throw-on-extras",
+  "controllerPathGlobs": ["src/api/**/*.controller.ts"],
+  "spec": {
+    "outputDirectory": "openapi",
+    "specVersion": 3
+  },
+  "routes": {
+    "routesDir": "openapi"
+  },
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["src/*"],
+      "openapi/*": ["openapi/*"],
+      "tsoa": ["node_modules/tsoa"]
+    }
+  }
+}
